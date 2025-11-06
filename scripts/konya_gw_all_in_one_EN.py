@@ -2,10 +2,30 @@
 """
 Created on Fri Sep  5 16:40:43 2025
 
-@author: FAT
+@author: Fatih DİKBAŞ
 """
 
-# -*- coding: utf-8 -*-
+# SPDX-License-Identifier: GPL-3.0-only
+#
+# Groundwater Drought Dynamics in California — SGI/Event/Trend/GW-NDSPI Workflow
+# Copyright (c) 2025 Fatih Dikbaş
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of the GNU General Public License as published by the Free Software
+# Foundation, version 3 of the License.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT ANY
+# WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+# PARTICULAR PURPOSE. See the GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along with
+# this program. If not, see <https://www.gnu.org/licenses/gpl-3.0.html>.
+#
+# Project repo: https://github.com/fdikbas/GWDroughtKonya
+# Suggested citation (software):
+#   Dikbaş, F. (2025). GWDroughtKonya: Python-based groundwater drought analysis for Konya [Source code].
+#   GitHub. https://github.com/fdikbas/GWDroughtKonya
+
 """
 Konya GW — ALL-IN-ONE analysis, figures and study-area map (EN labels + _EN folders)
 
@@ -3511,3 +3531,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
