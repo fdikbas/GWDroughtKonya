@@ -94,4 +94,3 @@ All outputs are written under `out_*` folders at 400 dpi with stable styling (pu
 ## Acknowledgements
 
 This repository packages a generalized version of the analysis workflow used for semi‑arid basins with groundwater‑drought stress (Konya‑style). The approach combines standardized indices, robust trend tests, persistence diagnostics, and return‑level mapping to support policy‑relevant decisions.
-

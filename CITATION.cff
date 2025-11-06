@@ -1,0 +1,21 @@
+cff-version: 1.2.0
+message: "If you use this code or synthetic dataset, please cite this repository."
+title: "KonyaGW: Reproducible groundwater drought diagnostics (SGI, MK–Sen, GW-NDSPI, GEV)"
+authors:
+  - family-names: Dikbaş
+    given-names: Fatih
+  - family-names: (Contributors)
+    given-names: Community
+date-released: "2025-11-06"
+version: "v1.0.0"
+license: "GPL-3.0-or-later"
+repository-code: "https://github.com/your-org/konya-gw-ndspi-release"
+keywords:
+  - groundwater
+  - drought
+  - SGI
+  - Mann-Kendall
+  - Sen's slope
+  - GW-NDSPI
+  - GEV
+  - Konya

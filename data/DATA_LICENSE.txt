@@ -1,0 +1,6 @@
+Data notice
+===========
+All datasets under `data/` are SYNTHETIC and released for demonstration only.
+They mimic realistic behavior but do not represent real wells or measurements.
+
+License: CC BY 4.0 for synthetic data in this repo.
