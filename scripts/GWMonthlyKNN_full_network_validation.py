@@ -1,15 +1,374 @@
 # -*- coding: utf-8 -*-
 """
-GWMonthlyKNN_full_network_validation_v1.py
+================================================================================
+BEGINNER-FRIENDLY GUIDE TO THIS SCRIPT
+================================================================================
 
-Purpose:
-- Address reviewer concern: evaluation based on only 8 wells.
-- Run masked-gap validation across ALL wells where valid observed 12- and/or 24-month windows exist.
-- Compute correlation + magnitude-based error metrics (RMSE/MAE/Bias/NSE).
-- Compare against simple baselines (linear interpolation, seasonal climatology, neighboring-well regression).
-- Optional sensitivity runs for KNN hyperparameters (k, rolling window w, weights).
+File name
+---------
+GWMonthlyKNN_full_network_validation_2026.05.31_v6.py
 
-Designed for Spyder/Windows: parameterless runfile(...).
+What this script is for
+-----------------------
+This script is a validation companion for the main GWMonthlyKNN imputation workflow.
+The main manuscript originally showed illustrative validation on a small set of wells.
+Reviewers asked for a stronger, network-scale validation using many more wells and
+using error metrics beyond correlation. This script was written to answer that request.
+
+In the simplest possible terms, the script does the following:
+
+1. It reads the grouped monthly groundwater-level file:
+
+       gwl-monthly.grouped.csv
+
+2. For each well, it looks for fully observed 12-month and 24-month periods.
+   A fully observed period means that the well has a real WSE value in every month
+   of that candidate period.
+
+3. It temporarily hides one selected observed period from the well.
+   This is called a masked-gap test.
+
+   Example:
+   - Suppose a well has real observations from January 2015 to December 2015.
+   - The script removes those 12 values from the copy used for imputation.
+   - The removed values are kept separately as the known truth.
+   - The imputation method then tries to reconstruct those missing months.
+   - The reconstructed values are compared with the real hidden values.
+
+4. It repeats this procedure across all eligible wells in the network, not only for
+   a small hand-picked subset.
+
+5. It evaluates the default GWMonthlyKNN configuration and a few sensitivity variants.
+   In this version, the tested KNN variants are:
+
+       KNN_k5_w3_dist  : k = 5, rolling window = 3 months, distance weighting
+       KNN_k3_w3_dist  : k = 3, rolling window = 3 months, distance weighting
+       KNN_k8_w3_dist  : k = 8, rolling window = 3 months, distance weighting
+
+6. It compares GWMonthlyKNN with simple practical baseline methods:
+
+       baseline_linear_interp
+           Linear interpolation within the target well.
+
+       baseline_seasonal_climatology
+           Month-of-year average from the target well. For example, missing March
+           values are estimated from the available March values of the same well.
+
+       baseline_neighbor_regression
+           A simple regression based on the most correlated neighboring well inside
+           the same group, if such a donor well has enough overlapping data.
+
+7. It computes both correlation-based and magnitude-based performance metrics:
+
+       R
+           Pearson correlation between true hidden values and imputed values.
+           It tells whether the reconstructed series follows the same shape.
+
+       R2
+           Squared Pearson correlation.
+           This is useful as an association metric, but it does not measure bias.
+
+       RMSE
+           Root mean squared error.
+           Large errors are penalized strongly. Lower is better.
+
+       MAE
+           Mean absolute error.
+           Average absolute size of the error. Lower is better.
+
+       Bias
+           Mean signed error, computed as prediction minus observation.
+           Positive Bias means overestimation on average.
+           Negative Bias means underestimation on average.
+
+       NSE
+           Nash-Sutcliffe efficiency.
+           Values closer to 1 are better. Values below 0 indicate that the method
+           can be worse than simply using the observed mean for that test segment.
+
+8. It writes CSV outputs and optional summary figures into:
+
+       outputs_full_network_validation/
+
+Why this validation is useful
+-----------------------------
+A reviewer concern was that showing only a few example wells is not enough to support
+network-scale claims. This script addresses that concern by running the same masked-gap
+logic across every eligible station in the dataset.
+
+A second reviewer concern was that correlation alone can be misleading. A method can
+have high correlation but still be systematically too high or too low. Therefore, this
+script reports RMSE, MAE, Bias, and NSE in addition to R and R2.
+
+A third reviewer concern was that KNN should be compared with simpler methods. This
+script includes interpolation, seasonal climatology, and neighboring-well regression
+baselines so that GWMonthlyKNN is not evaluated in isolation.
+
+Important conceptual point: this is NOT random masking
+-----------------------------------------------------
+The script does not randomly remove scattered points. Instead, it creates blocked gaps.
+This is intentional.
+
+Groundwater monitoring gaps often happen as contiguous periods, for example because of
+sensor failure, telemetry outage, site-access problems, maintenance, or quality-control
+exclusions. A 12-month or 24-month blocked gap is therefore more realistic and more
+challenging than randomly deleting isolated monthly observations.
+
+How the test window is selected
+-------------------------------
+The setting WINDOW_SELECTION = "max_std" means:
+
+   Among all valid fully observed candidate windows for a station, choose the window
+   with the highest standard deviation in WSE.
+
+This makes the validation more demanding because the hidden period is not a flat or
+quiet period. It tends to select a period with stronger variation, which is harder to
+reconstruct.
+
+What input file is required
+---------------------------
+The script expects this file in the same working directory:
+
+       gwl-monthly.grouped.csv
+
+The file must contain at least these columns:
+
+       STATION
+           Unique station/well identifier.
+
+       GROUP
+           Well-group identifier used to restrict candidate donor wells.
+           In the manuscript this is based on the PLSS-prefix grouping.
+
+       MSMT_DATE
+           Monthly date field. It must be readable by pandas.to_datetime().
+
+       WSE
+           Monthly water-surface-elevation value. Missing values must be blank/NaN.
+
+The script will stop with a clear KeyError if any of these columns are missing.
+
+Where to put the files
+----------------------
+For the simplest use in Spyder on Windows:
+
+1. Put this Python file and gwl-monthly.grouped.csv in the same folder.
+2. Set Spyder's working directory to that folder.
+3. Run the script with:
+
+       runfile('GWMonthlyKNN_full_network_validation_2026.05.31_v6.py',
+               wdir='YOUR_PROJECT_FOLDER')
+
+4. The output folder will be created automatically:
+
+       outputs_full_network_validation
+
+Main user settings
+------------------
+The most important settings are near the top of the script.
+
+INPUT_CSV
+    Name of the grouped monthly input file.
+    Default: "gwl-monthly.grouped.csv"
+
+OUTDIR
+    Output directory for validation results.
+    Default: "outputs_full_network_validation"
+
+RANDOM_SEED
+    Included for reproducibility. The current validation window selection is
+    deterministic, but keeping a seed is useful if random options are added later.
+
+GAP_LENGTHS
+    Masked gap lengths to test.
+    Default: [12, 24]
+    This means one-year and two-year consecutive artificial gaps.
+
+WINDOW_SELECTION
+    Rule for choosing the hidden observed window.
+    Default: "max_std"
+    This selects the highest-variability fully observed window for each station.
+
+MIN_TRAIN_OBS
+    Minimum number of overlapping observed months required to fit the neighboring-well
+    regression baseline.
+    Default: 24
+
+MIN_OUTSIDE_OBS
+    Minimum number of observed months that must remain outside the hidden window.
+    Default: 12
+    This prevents selecting a validation window when too little observed context remains.
+
+KNN_VARIANTS
+    List of GWMonthlyKNN configurations to test.
+    Each entry has:
+       name    : label used in output tables
+       k       : number of KNN neighbors
+       w       : rolling-window length in months
+       weights : KNN weighting mode, usually "distance" or "uniform"
+
+RUN_BASELINES
+    If True, run simple baseline methods.
+    Keep True for manuscript/reviewer validation.
+
+MAKE_SUMMARY_FIGS
+    If True, create RMSE boxplots as PDF and PNG.
+
+What each function does
+-----------------------
+month_id(dt)
+    Converts a date into a single integer month index.
+    This makes it easy to check whether months are consecutive.
+
+contiguous_observed_windows(st_df, L)
+    Searches one station's time series for candidate fully observed windows of length L.
+    It only accepts a candidate if:
+       - the months are consecutive, and
+       - every WSE value in that window is observed.
+
+select_window(st_df, L, rule="max_std")
+    Selects one candidate validation window for a station.
+    With "max_std", it chooses the fully observed window with the largest WSE variability.
+
+rmse(y, yhat), mae(y, yhat), bias(y, yhat), pearson_r(y, yhat), r2(y, yhat), nse(y, yhat)
+    Small metric helper functions.
+    compute_metrics() is the main combined function used in the evaluation loop.
+
+compute_metrics(y, yhat)
+    Computes all metrics for one masked test:
+       R, R2, RMSE, MAE, Bias, NSE, and n_test.
+    It automatically ignores pairs where either the true value or prediction is missing.
+
+knn_group_impute(group_data, k=5, w=3, weights="distance")
+    Recreates the core GWMonthlyKNN group-wise imputation procedure for validation.
+    It constructs lag and rolling features, pivots the data by month/year and station,
+    and applies scikit-learn's KNNImputer.
+
+baseline_linear_interpolation(st_df_masked, target_dates)
+    Estimates the hidden values using time interpolation inside the target well only.
+
+baseline_seasonal_climatology(st_df_masked, target_dates)
+    Estimates the hidden values using same-month averages from the target well.
+
+baseline_neighbor_regression(group_df_masked, target_station, target_dates)
+    Finds the best available donor well inside the same group and fits a simple linear
+    regression from donor WSE to target WSE.
+    If no usable donor exists, it returns None.
+
+compute_win_rates(res_df, target_variant="KNN_k5_w3_dist")
+    Calculates how often the default GWMonthlyKNN has lower RMSE/MAE than the simple
+    baseline methods, and also computes median RMSE skill relative to baselines.
+
+Important implementation detail: long consecutive gaps
+------------------------------------------------------
+Lag and rolling features are computed before imputation from the masked/original group
+series. The script does not fill the first missing month, then recompute lag features,
+then fill the second missing month, and so on. In other words, the validation does not
+use an iterative month-by-month self-feeding procedure inside the artificial gaps.
+
+This matters because iterative gap filling can accidentally make later predictions depend
+on earlier imputed values. Here, the KNNImputer estimates the masked missing values from
+the available feature matrix in one imputation pass.
+
+Main output files
+-----------------
+The script writes the following main outputs:
+
+station_missingness_summary.csv
+    One row per station. Includes number of months, number of missing months, first and
+    last dates, group identifier, and missing fraction.
+
+selected_windows_per_station.csv
+    Shows which 12-month and/or 24-month validation windows were selected for each
+    station. Stations without a valid window are marked as no_valid_window.
+
+full_network_masked_gap_metrics.csv
+    Detailed station-level validation results. This is the most complete output.
+    It includes one row per method, station, and gap length.
+
+summary_by_method_gap.csv
+    Paper-ready summary table by method and gap length.
+    It reports medians and IQR-style summaries.
+
+winrate_summary_vs_baselines.csv
+    Shows how often the default GWMonthlyKNN beats linear interpolation and seasonal
+    climatology in terms of RMSE and MAE, plus median RMSE skill.
+
+rmse_boxplot_gap12.pdf / rmse_boxplot_gap12.png
+rmse_boxplot_gap24.pdf / rmse_boxplot_gap24.png
+    Optional boxplots of RMSE distributions for the tested methods.
+
+How to interpret the output quickly
+-----------------------------------
+Start with summary_by_method_gap.csv.
+Look for the row where:
+
+       method  = GWMonthlyKNN
+       variant = KNN_k5_w3_dist
+
+This is the default configuration used in the manuscript.
+Compare its RMSE_median, MAE_median, Bias_median, R2_median, and NSE_median with the
+baseline methods.
+
+Then inspect winrate_summary_vs_baselines.csv.
+This tells whether GWMonthlyKNN improves RMSE/MAE for most comparable wells, not only
+whether its median error is smaller.
+
+Then inspect full_network_masked_gap_metrics.csv.
+This file is useful for finding individual wells where the method performs poorly, for
+example due to irregular hydrographs, local pumping effects, weak donor coherence, or
+concurrent gaps in the same group.
+
+Common mistakes and easy fixes
+------------------------------
+Problem:
+    FileNotFoundError: gwl-monthly.grouped.csv not found
+Fix:
+    Put gwl-monthly.grouped.csv in the current working directory, or edit INPUT_CSV.
+
+Problem:
+    KeyError: Missing required columns
+Fix:
+    Ensure the input CSV contains STATION, GROUP, MSMT_DATE, and WSE.
+
+Problem:
+    No valid windows were found
+Fix:
+    The dataset may not contain fully observed 12- or 24-month blocks after trimming.
+    Try lowering the required gap lengths, for example GAP_LENGTHS = [6, 12].
+
+Problem:
+    Neighbor regression has many missing results
+Fix:
+    This is expected when groups are small or donor wells do not overlap enough with the
+    target station. The method records this as no_valid_donor_or_overlap.
+
+Problem:
+    The script runs slowly
+Fix:
+    Reduce KNN_VARIANTS, set MAKE_SUMMARY_FIGS = False, or test only one GAP_LENGTHS
+    value while debugging.
+
+What this script does NOT claim
+-------------------------------
+This script does not prove that KNN is universally optimal.
+It does not provide formal probabilistic prediction intervals.
+It does not prove that PLSS grouping is always hydrologically perfect.
+It does not replace site-specific hydrogeologic judgment.
+
+Instead, it provides a transparent, reproducible, reviewer-responsive validation layer
+for checking how GWMonthlyKNN behaves across the full eligible monitoring network under
+realistic blocked-gap stress tests.
+
+Recommended citation in repository documentation
+------------------------------------------------
+In the GitHub README or manuscript Data and Software Availability section, this script can
+be described as the full-network masked-gap validation script that generates station-level
+and method-level outputs used for the revised manuscript's expanded validation results.
+
+================================================================================
+END OF BEGINNER-FRIENDLY GUIDE
+================================================================================
 """
 
 import os
